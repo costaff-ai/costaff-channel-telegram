@@ -344,7 +344,7 @@ async def main():
         ("start", "開始"), ("reset", "重設"), ("help", "幫助"), ("profile", "資料"), ("list", "排程")
     ]]
     await bot.set_my_commands(cmds)
-    # await reset_all_sessions() # Optional: Disable if annoying during dev
+    await reset_all_sessions()
     try:
         logger.info("Starting Telegram Bot...")
         await dp.start_polling(bot)
