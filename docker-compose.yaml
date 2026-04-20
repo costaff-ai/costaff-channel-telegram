@@ -10,7 +10,7 @@ services:
       - COSTAFF_PREFERRED_LANGUAGE=${COSTAFF_PREFERRED_LANGUAGE}
       - ADK_SESSION_SERVICE_URI=${ADK_SESSION_SERVICE_URI}
     volumes:
-      - costaff_costaff_data:/app/data
+      - costaff_data:/app/data
     networks:
       - costaff_default
 
@@ -19,5 +19,5 @@ networks:
     external: true
 
 volumes:
-  costaff_costaff_data:
+  costaff_data:
     external: true
