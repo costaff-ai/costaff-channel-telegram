@@ -5,6 +5,7 @@ import json
 import logging
 import io
 import hashlib
+import uuid
 from typing import Optional, List
 from dotenv import load_dotenv
 
@@ -104,7 +105,42 @@ async def upload_to_costaff(file_content: io.BytesIO, filename: str, user_id: st
             }
             res = await client.post(f"{PRIVAI_URL}/v1/files", headers=headers, files=files, params={"purpose": "user_data"})
             return res.json().get("id") if res.status_code == 200 else None
-        except Exception: return None
+        except Exception as e:
+            logger.warning(f"File upload to PrivAI failed: {e}")
+            return None
+
+# Shared HTTP client — reused across all ADK API calls to avoid per-request TCP overhead
+_http_client: Optional[httpx.AsyncClient] = None
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=TIMEOUT)
+    return _http_client
+
+
+def setup_logging(level: str = "INFO") -> None:
+    """Configure JSON structured logging. Call once at application startup."""
+    class _JSONFormatter(logging.Formatter):
+        def format(self, record: logging.LogRecord) -> str:
+            data = {
+                "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+                "level": record.levelname,
+                "logger": record.name,
+                "msg": record.getMessage(),
+            }
+            if record.exc_info:
+                data["exc"] = self.formatException(record.exc_info)
+            return json.dumps(data, ensure_ascii=False)
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(_JSONFormatter())
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        handlers=[handler],
+        force=True,
+    )
+
 
 # ADK API Logic
 _session_locks: dict[str, asyncio.Lock] = {}
@@ -129,11 +165,13 @@ async def _release_session_lock(sid: str) -> None:
 
 async def ensure_session(app: str, uid: str, sid: str) -> bool:
     url = f"{ADK_URL}/apps/{app}/users/{uid}/sessions"
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        try:
-            res = await client.post(url, json={"sessionId": sid, "state": {}})
-            return res.status_code in [200, 201, 409]
-        except Exception: return False
+    client = _get_http_client()
+    try:
+        res = await client.post(url, json={"sessionId": sid, "state": {}})
+        return res.status_code in [200, 201, 409]
+    except Exception as e:
+        logger.warning(f"Failed to ensure session {sid}: {e}")
+        return False
 
 async def delete_session(app: str, uid: str, sid: str) -> bool:
     url = f"{ADK_URL}/apps/{app}/users/{uid}/sessions/{sid}"
@@ -147,25 +185,31 @@ async def delete_session(app: str, uid: str, sid: str) -> bool:
             return False
 
 async def run_adk_prompt(app: str, uid: str, sid: str, prompt: Optional[str] = None, parts: Optional[List[dict]] = None) -> str:
+    cid = uuid.uuid4().hex[:8]
+    logger.info(f"ADK request start cid={cid} sid={sid}")
     await ensure_session(app, uid, sid)
     lock = await _get_session_lock(sid)
     try:
         async with lock:
             msg_parts = parts if parts else ([{"text": prompt}] if prompt else [])
             payload = {"appName": app, "userId": uid, "sessionId": sid, "newMessage": {"role": "user", "parts": msg_parts}}
-            async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-                for _ in range(3):
-                    try:
-                        res = await client.post(f"{ADK_URL}/run", json=payload)
-                        if res.status_code == 200:
-                            for event in reversed(res.json()):
-                                if event.get("author") != "user" and "content" in event:
-                                    txts = [p.get("text", "") for p in event["content"].get("parts", []) if "text" in p]
-                                    if txts: return "".join(txts).strip()
-                            # Nudge if silent
-                            preferred_lang = os.getenv("COSTAFF_PREFERRED_LANGUAGE", "Traditional Chinese (繁體中文)")
-                            payload["newMessage"] = {"role": "user", "parts": [{"text": f"任務已完成，請用{preferred_lang}向用戶說明結果摘要。"}]}
-                            continue
-                    except Exception: await asyncio.sleep(2)
-                return "⚠️ 無法取得 Agent 回應。"
-    finally: await _release_session_lock(sid)
+            headers = {"X-Correlation-ID": cid}
+            client = _get_http_client()
+            for _ in range(3):
+                try:
+                    res = await client.post(f"{ADK_URL}/run", json=payload, headers=headers)
+                    if res.status_code == 200:
+                        for event in reversed(res.json()):
+                            if event.get("author") != "user" and "content" in event:
+                                txts = [p.get("text", "") for p in event["content"].get("parts", []) if "text" in p]
+                                if txts: return "".join(txts).strip()
+                        preferred_lang = os.getenv("COSTAFF_PREFERRED_LANGUAGE", "Traditional Chinese (繁體中文)")
+                        payload["newMessage"] = {"role": "user", "parts": [{"text": f"任務已完成，請用{preferred_lang}向用戶說明結果摘要。"}]}
+                        continue
+                except Exception as e:
+                    logger.warning(f"ADK request attempt failed cid={cid} sid={sid}: {e}")
+                    await asyncio.sleep(2)
+            logger.warning(f"ADK request exhausted retries cid={cid} sid={sid}")
+            return "⚠️ 無法取得 Agent 回應。"
+    finally:
+        await _release_session_lock(sid)

@@ -1,21 +1,36 @@
 import os
 import re
 import io
+import time
 import base64
 import logging
 import asyncio
+from collections import defaultdict
 from typing import Set
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message, FSInputFile, BotCommand
 
-from src.core.adk_client import run_adk_prompt, delete_session, upload_to_costaff, sync_identity, check_approved, get_user_id
+from src.core.adk_client import run_adk_prompt, delete_session, upload_to_costaff, sync_identity, check_approved, get_user_id, setup_logging
 from src.core.adk_client import SessionLocal, models
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+setup_logging(os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
+
+# Rate limiting: max messages per user per time window
+_RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "10"))
+_RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+_msg_timestamps: dict[str, list[float]] = defaultdict(list)
+
+def _is_rate_limited(uid: str) -> bool:
+    now = time.time()
+    window_start = now - _RATE_LIMIT_WINDOW
+    _msg_timestamps[uid] = [t for t in _msg_timestamps[uid] if t > window_start]
+    if len(_msg_timestamps[uid]) >= _RATE_LIMIT_MAX:
+        return True
+    _msg_timestamps[uid].append(now)
+    return False
 
 # Environment variables
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -217,6 +232,15 @@ async def handle_msg(msg: Message):
     sync_identity(uid, str(msg.chat.id), sid)
     if not check_approved(sid):
         await msg.answer(PENDING_MSG)
+        return
+
+    if _is_rate_limited(uid):
+        await msg.answer("⏳ 訊息太頻繁，請稍後再試。")
+        return
+
+    _MAX_MSG_LEN = int(os.getenv("MAX_MSG_LEN", "8000"))
+    if len(text) > _MAX_MSG_LEN:
+        await msg.answer(f"⚠️ 訊息過長（上限 {_MAX_MSG_LEN} 字元），請縮短後再試。")
         return
 
     UPLOADS_DIR = "/app/data/coding_workspace/shared/uploads"
