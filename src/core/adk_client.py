@@ -140,7 +140,7 @@ async def delete_session(app: str, uid: str, sid: str) -> bool:
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         try:
             res = await client.delete(url)
-            return res.status_code == 200
+            return res.status_code in [200, 204, 404]
         except Exception: return False
 
 async def run_adk_prompt(app: str, uid: str, sid: str, prompt: Optional[str] = None, parts: Optional[List[dict]] = None) -> str:
