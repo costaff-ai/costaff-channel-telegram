@@ -1,0 +1,22 @@
+services:
+  telegram:
+    build: .
+    container_name: costaff-chan-telegram
+    restart: always
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ADK_API_BASE_URL=http://costaff-agent:8080
+      - ADK_APP_NAME=costaff_agent
+      - COSTAFF_PREFERRED_LANGUAGE=${COSTAFF_PREFERRED_LANGUAGE}
+    volumes:
+      - costaff_data:/app/data
+    networks:
+      - costaff_default
+
+networks:
+  costaff_default:
+    external: true
+
+volumes:
+  costaff_data:
+    external: true

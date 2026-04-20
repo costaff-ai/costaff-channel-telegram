@@ -1,0 +1,16 @@
+{
+  "name": "telegram",
+  "version": "0.1.0",
+  "description": "Telegram 通訊頻道 Bot。",
+  "a2a_service": "telegram",
+  "port": 8080,
+  "env_required": [
+    "TELEGRAM_BOT_TOKEN"
+  ],
+  "env_optional": [
+    "ADK_API_BASE_URL",
+    "ADK_APP_NAME",
+    "COSTAFF_PREFERRED_LANGUAGE"
+  ],
+  "health_path": "/.well-known/agent.json"
+}
