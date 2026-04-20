@@ -21,3 +21,4 @@ networks:
 volumes:
   costaff_data:
     external: true
+    name: costaff_data
