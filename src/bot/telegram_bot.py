@@ -45,13 +45,25 @@ dp = Dispatcher()
 
 _processed_message_ids: Set[int] = set()
 
+_TG_MAX_LEN = 4096
+_TG_TRUNCATE_SUFFIX = "\n\n...(訊息過長，已截斷)"
+
+def _truncate_tg(text: str) -> str:
+    if len(text) <= _TG_MAX_LEN:
+        return text
+    return text[:_TG_MAX_LEN - len(_TG_TRUNCATE_SUFFIX)] + _TG_TRUNCATE_SUFFIX
+
 async def safe_reply(msg: Message, text: str):
     """Replies to a message using HTML parse mode, handling potential errors."""
+    text = _truncate_tg(text)
     try:
         await msg.reply(text, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Reply error: {e}. Falling back to plain text.")
-        await msg.reply(text)
+        try:
+            await msg.reply(text)
+        except Exception as e2:
+            logger.error(f"Plain text reply also failed: {e2}")
 
 @dp.message(Command("start"))
 async def cmd_start(msg: Message):
