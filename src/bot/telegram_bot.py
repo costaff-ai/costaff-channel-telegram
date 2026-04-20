@@ -266,7 +266,7 @@ async def handle_msg(msg: Message):
         await bot.download_file(info.file_path, buf)
         data = base64.b64encode(buf.getvalue()).decode()
         parts.append({"inlineData": {"mimeType": "image/jpeg", "data": data}})
-        # Also save to shared workspace so coding-agent can access it
+        # Also save to shared workspace so costaff-agent-coding can access it
         fname = f"photo_{photo.file_id}.jpg"
         fpath = os.path.join(UPLOADS_DIR, fname)
         buf.seek(0)
