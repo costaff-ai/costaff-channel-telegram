@@ -119,7 +119,7 @@ costaff-channel-telegram/
 └── requirements.txt
 ```
 
-The bot runs as a single Docker container, joins the `costaff_default` network, and mounts the `costaff_costaff_data` volume to access shared workspace files produced by external agents.
+The bot runs as a single Docker container, joins the `costaff_default` network, and mounts the `costaff_data` volume to access shared workspace files produced by external agents.
 
 ---
 

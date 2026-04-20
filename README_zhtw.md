@@ -119,7 +119,7 @@ costaff-channel-telegram/
 └── requirements.txt
 ```
 
-Bot 以單一 Docker 容器運行，加入 `costaff_default` 網路，並掛載 `costaff_costaff_data` Volume 以存取外部 Agent 產出的共享工作區檔案。
+Bot 以單一 Docker 容器運行，加入 `costaff_default` 網路，並掛載 `costaff_data` Volume 以存取外部 Agent 產出的共享工作區檔案。
 
 ---
 
