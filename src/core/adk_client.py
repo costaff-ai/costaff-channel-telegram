@@ -22,7 +22,7 @@ PRIVAI_KEY = os.getenv("PRIVAI_API_KEY")
 
 # Database/Identity Integration (Optional, used by some bots)
 try:
-    from sqlalchemy import Column, String, DateTime, create_engine
+    from sqlalchemy import Column, String, DateTime, Boolean, create_engine
     from sqlalchemy.ext.declarative import declarative_base
     from sqlalchemy.orm import sessionmaker
     from datetime import datetime
@@ -31,12 +31,15 @@ try:
     class IdentityMap(Base):
         __tablename__ = "identity_maps"
         session_id = Column(String, primary_key=True)
-        hashed_id = Column(String, index=True)
-        real_id = Column(String)
+        hashed_id = Column(String, index=True, nullable=False)
+        real_id = Column(String, nullable=False)
+        is_approved = Column(Boolean, default=False, nullable=False)
         created_at = Column(DateTime, default=datetime.utcnow)
+        updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     db_uri = os.getenv("ADK_SESSION_SERVICE_URI", "sqlite:///./costaff_agent.db")
     engine = create_engine(db_uri.replace("postgresql+asyncpg://", "postgresql://"))
+    Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     models = type('obj', (object,), {'IdentityMap': IdentityMap})
 except ImportError:
@@ -50,22 +53,42 @@ def get_user_id(real_id: any) -> str:
 
 def sync_identity(hashed_id: str, real_id: str, session_id: str):
     """Saves the mapping between hashed ID and real platform ID."""
-    if not SessionLocal: return
+    if not SessionLocal:
+        logger.warning("sync_identity: SessionLocal not available, skipping")
+        return
     db = SessionLocal()
     try:
         m = db.query(models.IdentityMap).filter(models.IdentityMap.session_id == session_id).first()
         if not m:
-            db.add(models.IdentityMap(session_id=session_id, hashed_id=hashed_id, real_id=real_id))
+            logger.info(f"sync_identity: creating new identity for session_id={session_id}")
+            db.add(models.IdentityMap(session_id=session_id, hashed_id=hashed_id, real_id=real_id, is_approved=False))
         else:
             m.real_id = real_id
             m.hashed_id = hashed_id
         db.commit()
+        logger.info(f"sync_identity: committed session_id={session_id}")
+    except Exception as e:
+        logger.error(f"sync_identity: DB error for session_id={session_id}: {e}")
+        db.rollback()
     finally:
         db.close()
 
 def check_approved(session_id: str) -> bool:
-    """Placeholder for approval logic. Defaults to True if not configured."""
-    return True
+    """Check if user is approved. Defaults to False if DB not configured."""
+    if not SessionLocal:
+        logger.warning("check_approved: SessionLocal not available, denying by default")
+        return False
+    db = SessionLocal()
+    try:
+        m = db.query(models.IdentityMap).filter(models.IdentityMap.session_id == session_id).first()
+        result = m.is_approved if m else False
+        logger.info(f"check_approved: session_id={session_id}, is_approved={result}, record_exists={m is not None}")
+        return result
+    except Exception as e:
+        logger.error(f"check_approved: DB error for session_id={session_id}: {e}")
+        return False
+    finally:
+        db.close()
 
 async def upload_to_costaff(file_content: io.BytesIO, filename: str, user_id: str, sid: str = None, app_name: str = "costaff_agent") -> str:
     if not PRIVAI_KEY: return None

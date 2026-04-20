@@ -60,6 +60,7 @@ async def cmd_reset(msg: Message):
     """Clears the current conversation session."""
     uid = get_user_id(msg.chat.id)
     sid = f"tg_{uid}"
+    sync_identity(uid, str(msg.chat.id), sid)
     if not check_approved(sid):
         await msg.answer(PENDING_MSG)
         return
@@ -86,6 +87,7 @@ async def cmd_help(msg: Message):
 async def cmd_profile(msg: Message):
     uid = get_user_id(msg.chat.id)
     sid = f"tg_{uid}"
+    sync_identity(uid, str(msg.chat.id), sid)
     if not check_approved(sid):
         await msg.answer(PENDING_MSG)
         return
@@ -97,6 +99,7 @@ async def cmd_profile(msg: Message):
 async def cmd_list(msg: Message):
     uid = get_user_id(msg.chat.id)
     sid = f"tg_{uid}"
+    sync_identity(uid, str(msg.chat.id), sid)
     if not check_approved(sid):
         await msg.answer(PENDING_MSG)
         return
@@ -145,22 +148,17 @@ async def _deliver_response(msg: Message, final_res: str):
     FILE_EXTS = r"pdf|docx|md|txt|html|htm|png|jpg|jpeg|gif|csv|json|xlsx|xls|zip"
 
     # 1a. [FILE: path] or (FILE: path) tags — absolute or relative
-    tag_paths = re.findall(
-        rf"[\[\(](?:FILE|檔案)[:：]\s*([^\]\)\s]+\.(?:{FILE_EXTS}))[\]\)]",
-        final_res, re.IGNORECASE
-    )
+    # Use a simpler regex construction to avoid f-string escaping issues
+    tag_pattern = r"[\[\(](?:FILE|檔案)[:：]\s*([^\]\)\s]+\.(?:" + FILE_EXTS + r"))[\]\)]"
+    tag_paths = re.findall(tag_pattern, final_res, re.IGNORECASE)
 
     # 1b. Absolute /app/data/... paths
-    abs_paths = re.findall(
-        rf"`?(/app/data/[\w./-]+\.(?:{FILE_EXTS}))`?",
-        final_res, re.IGNORECASE
-    )
+    abs_pattern = r"`?(/app/data/[\w./-]+\.(?:" + FILE_EXTS + r"))`?"
+    abs_paths = re.findall(abs_pattern, final_res, re.IGNORECASE)
 
-    # 1c. Relative paths in backticks e.g. `79814feed6d42f30/svm_report.html`
-    rel_paths = re.findall(
-        rf"`([\w/-]+\.(?:{FILE_EXTS}))`",
-        final_res, re.IGNORECASE
-    )
+    # 1c. Relative paths in backticks
+    rel_pattern = r"`([\w/-]+\.(?:" + FILE_EXTS + r"))`"
+    rel_paths = re.findall(rel_pattern, final_res, re.IGNORECASE)
 
     raw_paths = list(dict.fromkeys(tag_paths + abs_paths + rel_paths))
     all_paths = [r for p in raw_paths if (r := _resolve_path(p))]
@@ -168,7 +166,7 @@ async def _deliver_response(msg: Message, final_res: str):
     # 2. Clean response text — replace path references with attachment hint only when files exist
     attachment_hint = "（詳見附件）" if all_paths else ""
     clean_res = re.sub(
-        rf"[\[\(](?:FILE|檔案)[:：]\s*([^\]\)\s]+\.(?:{FILE_EXTS})[\]\)]",
+        rf"[\[\(](?:FILE|檔案)[:：]\s*([^\]\)\s]+\.(?:{FILE_EXTS}))[\]\)]",
         attachment_hint, final_res, flags=re.IGNORECASE
     )
     clean_res = re.sub(rf"`?/app/data/[\w./-]+\.(?:{FILE_EXTS})`?", attachment_hint, clean_res, flags=re.IGNORECASE)
