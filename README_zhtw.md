@@ -94,7 +94,7 @@ docker compose up -d --build
 | 變數名稱 | 必填 | 預設值 | 說明 |
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | ✅ | — | 從 @BotFather 取得的 Bot Token |
-| `ADK_API_BASE_URL` | ❌ | `http://costaff-agent:8080` | CoStaff Agent ADK API 位址 |
+| `ADK_API_BASE_URL` | ❌ | `http://costaff-agent-costaff:8080` | CoStaff Agent ADK API 位址 |
 | `ADK_APP_NAME` | ❌ | `costaff_agent` | ADK 應用程式名稱 |
 | `COSTAFF_PREFERRED_LANGUAGE` | ❌ | `Traditional Chinese (繁體中文)` | Agent 回應語言 |
 | `RATE_LIMIT_MAX` | ❌ | `10` | 每位使用者在時間窗口內的訊息上限 |
