@@ -175,11 +175,10 @@ async def _deliver_response(msg: Message, final_res: str):
     FILE_EXTS = r"pdf|docx|md|txt|html|htm|png|jpg|jpeg|gif|csv|json|xlsx|xls|zip"
 
     # 1a. [FILE: path] or (FILE: path) tags — absolute or relative
-    # Use a simpler regex construction to avoid f-string escaping issues
     tag_pattern = r"[\[\(](?:FILE|檔案)[:：]\s*([^\]\)\s]+\.(?:" + FILE_EXTS + r"))[\]\)]"
     tag_paths = re.findall(tag_pattern, final_res, re.IGNORECASE)
 
-    # 1b. Absolute /app/data/... paths
+    # 1b. Absolute /app/data/... paths (optional surrounding backticks)
     abs_pattern = r"`?(/app/data/[\w./-]+\.(?:" + FILE_EXTS + r"))`?"
     abs_paths = re.findall(abs_pattern, final_res, re.IGNORECASE)
 
@@ -187,25 +186,40 @@ async def _deliver_response(msg: Message, final_res: str):
     rel_pattern = r"`([\w/-]+\.(?:" + FILE_EXTS + r"))`"
     rel_paths = re.findall(rel_pattern, final_res, re.IGNORECASE)
 
-    raw_paths = list(dict.fromkeys(tag_paths + abs_paths + rel_paths))
+    # 1d. [NEW] Bare paths (no backticks) - be conservative to avoid matching normal dots
+    # Look for patterns like "path/to/file.ext" that are preceded by space or start of line
+    bare_pattern = r"(?:^|\s|：)([\w/-]+\.(?:" + FILE_EXTS + r"))(?=$|\s|[.,!?;])"
+    bare_paths = re.findall(bare_pattern, final_res, re.IGNORECASE)
+
+    raw_paths = list(dict.fromkeys(tag_paths + abs_paths + rel_paths + bare_paths))
     all_paths = [r for p in raw_paths if (r := _resolve_path(p))]
 
     # 2. Clean response text — replace path references with attachment hint only when files exist
     attachment_hint = "（詳見附件）" if all_paths else ""
-    clean_res = re.sub(
-        rf"[\[\(](?:FILE|檔案)[:：]\s*([^\]\)\s]+\.(?:{FILE_EXTS}))[\]\)]",
-        attachment_hint, final_res, flags=re.IGNORECASE
-    )
-    clean_res = re.sub(rf"`?/app/data/[\w./-]+\.(?:{FILE_EXTS})`?", attachment_hint, clean_res, flags=re.IGNORECASE)
-    clean_res = re.sub(rf"`[\w/-]+\.(?:{FILE_EXTS})`", attachment_hint, clean_res, flags=re.IGNORECASE)
+    
+    # We only replace if the path actually exists to avoid confusing text like "See (詳見附件) for details" when nothing is attached
+    def _sub_func(match):
+        path = match.group(1)
+        if _resolve_path(path):
+            return attachment_hint
+        return match.group(0)
+
+    clean_res = re.sub(tag_pattern, _sub_func, final_res, flags=re.IGNORECASE)
+    clean_res = re.sub(abs_pattern, _sub_func, clean_res, flags=re.IGNORECASE)
+    clean_res = re.sub(rel_pattern, _sub_func, clean_res, flags=re.IGNORECASE)
+    clean_res = re.sub(bare_pattern, lambda m: attachment_hint if _resolve_path(m.group(1)) else m.group(0), clean_res, flags=re.IGNORECASE)
+
     # Collapse duplicate hints that appear consecutively
     clean_res = re.sub(r"（詳見附件）(\s*（詳見附件）)+", "（詳見附件）", clean_res)
     clean_res = clean_res.strip()
 
-    if clean_res:
-        await safe_reply(msg, clean_res)
-    elif not all_paths:
-        await safe_reply(msg, final_res)
+    # Fallback text if replacement leaves us with nothing or to prevent Telegram "empty text" error
+    if all_paths and (not clean_res or clean_res == attachment_hint):
+        clean_res = f"<b>任務已完成！</b> 以下是產出的檔案 {attachment_hint}"
+    elif not clean_res:
+        clean_res = final_res if final_res.strip() else "（Agent 已完成處理，但未回傳文字內容）"
+
+    await safe_reply(msg, clean_res)
 
     # 3. Deliver files
     for path in all_paths:
