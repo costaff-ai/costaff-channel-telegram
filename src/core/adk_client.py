@@ -5,6 +5,7 @@ import json
 import logging
 import io
 import hashlib
+import re
 import uuid
 from typing import Optional, List
 from dotenv import load_dotenv
@@ -202,7 +203,17 @@ async def run_adk_prompt(app: str, uid: str, sid: str, prompt: Optional[str] = N
                         for event in reversed(res.json()):
                             if event.get("author") != "user" and "content" in event:
                                 txts = [p.get("text", "") for p in event["content"].get("parts", []) if "text" in p]
-                                if txts: return "".join(txts).strip()
+                                if txts:
+                                    text = "".join(txts).strip()
+                                    # If markers leaked through, extract the content inside them
+                                    match = re.search(r'\[RESULT_START\](.*?)\[RESULT_END\]', text, flags=re.DOTALL)
+                                    if match:
+                                        text = match.group(1).strip()
+                                    else:
+                                        # Strip any stray marker tags without content
+                                        text = re.sub(r'\[RESULT_START\]|\[RESULT_END\]', '', text).strip()
+                                    if text:
+                                        return text
                         preferred_lang = os.getenv("COSTAFF_PREFERRED_LANGUAGE", "Traditional Chinese (繁體中文)")
                         payload["newMessage"] = {"role": "user", "parts": [{"text": f"任務已完成，請用{preferred_lang}向用戶說明結果摘要。"}]}
                         continue
