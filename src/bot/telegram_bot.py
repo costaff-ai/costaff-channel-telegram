@@ -64,25 +64,39 @@ async def safe_reply(msg: Message, text: str):
 
 DATA_ROOT = "/app/data"
 
-def _resolve_path(raw: str) -> str | None:
-    """Resolve a file path (absolute or relative) to an existing absolute path."""
+def _resolve_path(raw: str, wait_seconds: float = 0) -> str | None:
+    """Resolve a file path (absolute or relative) to an existing absolute path.
+    Includes a retry loop to handle volume synchronization delays.
+    """
     raw = raw.strip().strip("`").strip("'").strip("\"")
+    
+    # Candidate paths to check
+    candidates = []
     if os.path.isabs(raw):
-        return raw if (raw.startswith(DATA_ROOT) and os.path.exists(raw)) else None
-    if not os.path.exists(DATA_ROOT):
-        return None
-    # Check root
-    candidate = os.path.join(DATA_ROOT, raw)
-    if os.path.exists(candidate):
-        return candidate
-    # Check immediate subdirectories (agent-*)
-    try:
-        for entry in os.scandir(DATA_ROOT):
-            if entry.is_dir():
-                c = os.path.join(entry.path, raw)
-                if os.path.exists(c):
-                    return c
-    except Exception: pass
+        candidates.append(raw)
+    else:
+        # Check root
+        candidates.append(os.path.join(DATA_ROOT, raw))
+        # Check immediate subdirectories (agent-*)
+        try:
+            if os.path.exists(DATA_ROOT):
+                for entry in os.scandir(DATA_ROOT):
+                    if entry.is_dir():
+                        candidates.append(os.path.join(entry.path, raw))
+        except Exception: pass
+
+    # Retry loop for volume synchronization
+    start_time = time.time()
+    while True:
+        for cand in candidates:
+            # Check if it starts with DATA_ROOT and actually exists
+            if cand.startswith(DATA_ROOT) and os.path.exists(cand):
+                return cand
+        
+        if time.time() - start_time >= wait_seconds:
+            break
+        time.sleep(0.2)
+        
     return None
 
 async def _send_file(chat_id: str, path: str):
