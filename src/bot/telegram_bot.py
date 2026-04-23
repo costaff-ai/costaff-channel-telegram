@@ -66,36 +66,46 @@ DATA_ROOT = "/app/data"
 
 def _resolve_path(raw: str, wait_seconds: float = 0) -> str | None:
     """Resolve a file path (absolute or relative) to an existing absolute path.
-    Includes a retry loop to handle volume synchronization delays.
+    Includes a retry loop and intelligent subdirectory searching.
     """
     raw = raw.strip().strip("`").strip("'").strip("\"")
+    fname = os.path.basename(raw)
     
     # Candidate paths to check
     candidates = []
     if os.path.isabs(raw):
         candidates.append(raw)
-    else:
-        # Check root
-        candidates.append(os.path.join(DATA_ROOT, raw))
-        # Check immediate subdirectories (agent-*)
-        try:
-            if os.path.exists(DATA_ROOT):
-                for entry in os.scandir(DATA_ROOT):
-                    if entry.is_dir():
-                        candidates.append(os.path.join(entry.path, raw))
-        except Exception: pass
+        # If path looks like /app/data/agent-ba/xxx, add fuzzy match for agent-business-analysis
+        if "agent-ba/" in raw:
+            candidates.append(raw.replace("agent-ba/", "agent-business-analysis/"))
+    
+    # Always check common relative locations
+    candidates.append(os.path.join(DATA_ROOT, raw))
+    
+    # Intelligent fuzzy search in agent directories
+    try:
+        if os.path.exists(DATA_ROOT):
+            for entry in os.scandir(DATA_ROOT):
+                if entry.is_dir():
+                    candidates.append(os.path.join(entry.path, fname))
+                    # Also try original sub-path
+                    sub_part = raw.split("data/")[-1] if "data/" in raw else raw
+                    candidates.append(os.path.join(entry.path, os.path.basename(sub_part)))
+    except Exception: pass
+
+    # Unique candidates only
+    candidates = list(dict.fromkeys(candidates))
 
     # Retry loop for volume synchronization
     start_time = time.time()
     while True:
         for cand in candidates:
-            # Check if it starts with DATA_ROOT and actually exists
-            if cand.startswith(DATA_ROOT) and os.path.exists(cand):
+            if os.path.exists(cand) and os.path.isfile(cand):
                 return cand
         
         if time.time() - start_time >= wait_seconds:
             break
-        time.sleep(0.2)
+        time.sleep(0.3)
         
     return None
 
