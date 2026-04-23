@@ -10,7 +10,7 @@ services:
       - COSTAFF_PREFERRED_LANGUAGE=${COSTAFF_PREFERRED_LANGUAGE}
       - ADK_SESSION_SERVICE_URI=${ADK_SESSION_SERVICE_URI}
     volumes:
-      - /Users/simonliuyuwei/.costaff/data:/app/data
+      - costaff_data:/app/data
     networks:
       - costaff_default
 
@@ -18,4 +18,7 @@ networks:
   costaff_default:
     external: true
 
-# 移除不再需要的具名 volume 定義
+volumes:
+  costaff_data:
+    external: true
+    name: costaff_data
