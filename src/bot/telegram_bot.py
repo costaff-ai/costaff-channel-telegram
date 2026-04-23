@@ -99,68 +99,51 @@ async def _send_file(chat_id: str, path: str):
         logger.error(f"Failed to deliver {path}: {e}")
 
 async def _deliver_response(msg: Message, final_res: str):
-    """Enhanced delivery that protects code blocks and handles empty messages."""
-    logger.debug(f"Agent response length: {len(final_res)}")
+    """Simplified and robust delivery logic."""
+    logger.info(f"Processing agent response (len={len(final_res)})")
 
-    # 1. Protect code blocks
-    code_blocks = []
-    def _hide_code(m):
-        code_blocks.append(m.group(0))
-        return f"__CODE_BLOCK_{len(code_blocks)-1}__"
-    
-    # Hide multi-line and single-line code blocks
-    protected_res = re.sub(r"```.*?```", _hide_code, final_res, flags=re.DOTALL)
-    protected_res = re.sub(r"`[^`]+`", _hide_code, protected_res)
-
+    # 1. Path detection using broad regex (catches [FILE: path] or just /app/data/ path)
+    # This pattern matches anything starting with /app/data/ and ending with a common extension
     FILE_EXTS = r"pdf|docx|md|txt|html|htm|png|jpg|jpeg|gif|csv|json|xlsx|xls|zip"
-
-    # 2. Path Detection (always scan the ORIGINAL text to catch files inside code blocks)
+    
+    # Matches [FILE: /path] or (FILE: /path) or just /app/data/path
     tag_pattern = r"[\[\(](?:FILE|檔案)[:：]\s*([^\]\)\s]+)[\]\)]"
-    abs_pattern = r"(/app/data/[\w./-]+\.[a-zA-Z0-9]+)"
-    
-    # Extraction must use the full final_res to catch paths inside hidden blocks
-    extracted_tags = re.findall(tag_pattern, final_res, re.IGNORECASE)
-    extracted_abs = re.findall(abs_pattern, final_res)
-    
-    raw_paths = list(dict.fromkeys(extracted_tags + extracted_abs))
-    all_paths = []
-    for p in raw_paths:
-        resolved = _resolve_path(p)
-        if resolved:
-            all_paths.append(resolved)
-        else:
-            logger.warning(f"File path detected but not resolvable: {p}")
+    abs_pattern = r"(/app/data/[\w./-]+\.(?:" + FILE_EXTS + r"))"
 
-    # 3. Replacement (only on the PROTECTED text)
+    # Find all potential candidates
+    tags = re.findall(tag_pattern, final_res, re.IGNORECASE)
+    paths = re.findall(abs_pattern, final_res, re.IGNORECASE)
+    
+    candidates = list(dict.fromkeys(tags + paths))
+    delivered_count = 0
+    
+    clean_res = final_res
     attachment_hint = "（詳見附件）"
-    
-    def _sub_tag(match):
-        p = match.group(1)
-        return attachment_hint if _resolve_path(p) else match.group(0)
-    
-    def _sub_abs(match):
-        p = match.group(0)
-        return attachment_hint if _resolve_path(p) else match.group(0)
 
-    clean_res = re.sub(tag_pattern, _sub_tag, protected_res, flags=re.IGNORECASE)
-    clean_res = re.sub(abs_pattern, _sub_abs, clean_res)
+    for raw_p in candidates:
+        logger.info(f"Detected file candidate: {raw_p}")
+        resolved = _resolve_path(raw_p, wait_seconds=2.0) # Wait up to 2s
+        
+        if resolved:
+            logger.info(f"Resolved path successfully: {resolved}")
+            # Replace the path in text
+            clean_res = clean_res.replace(raw_p, attachment_hint)
+            # Send the file
+            await _send_file(str(msg.chat.id), resolved)
+            delivered_count += 1
+        else:
+            logger.warning(f"Failed to resolve or find file: {raw_p}")
 
-    # 4. Restore code blocks
-    for i, block in enumerate(code_blocks):
-        clean_res = clean_res.replace(f"__CODE_BLOCK_{i}__", block)
+    # Remove the surrounding [FILE: ] markers if they remain
+    clean_res = re.sub(r"[\[\(](?:FILE|檔案)[:：]\s*（詳見附件）\s*[\]\)]", attachment_hint, clean_res)
+    # Collapse multiple hints
+    clean_res = re.sub(r"(（詳見附件）\s*)+", attachment_hint, clean_res).strip()
 
-    clean_res = re.sub(r"（詳見附件）(\s*（詳見附件）)+", "（詳見附件）", clean_res).strip()
-
-    # 5. Final Safety Check for empty message
-    if all_paths and (not clean_res or clean_res == attachment_hint):
-        clean_res = f"<b>任務已完成！</b> 以下是產出的檔案 {attachment_hint}"
-    elif not clean_res:
-        clean_res = final_res if final_res.strip() else "（Agent 已完成處理，但未回傳文字內容）"
-
-    await safe_reply(msg, clean_res)
-
-    for path in all_paths:
-        await _send_file(str(msg.chat.id), path)
+    if delivered_count > 0:
+        await safe_reply(msg, clean_res)
+    else:
+        # Fallback if no files were actually delivered
+        await safe_reply(msg, final_res)
 
 async def _run_agent_task(msg: Message, uid: str, sid: str, parts: list):
     try:
