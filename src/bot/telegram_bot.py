@@ -115,27 +115,35 @@ async def _deliver_response(msg: Message, final_res: str):
     FILE_EXTS = r"pdf|docx|md|txt|html|htm|png|jpg|jpeg|gif|csv|json|xlsx|xls|zip"
 
     # 2. Path Detection (always scan the ORIGINAL text to catch files inside code blocks)
-    tag_pattern = r"[\[\(](?:FILE|檔案)[:：]\s*([^\]\)\s]+\.(?:" + FILE_EXTS + r"))[\]\)]"
-    abs_pattern = r"(/app/data/[\w./-]+\.(?:" + FILE_EXTS + r"))"
-    bare_pattern = r"(?:^|\s|：|:|。)([\w/-]+\.(?:" + FILE_EXTS + r"))(?=$|\s|[.,!?;。])"
-
+    tag_pattern = r"[\[\(](?:FILE|檔案)[:：]\s*([^\]\)\s]+)[\]\)]"
+    abs_pattern = r"(/app/data/[\w./-]+\.[a-zA-Z0-9]+)"
+    
     # Extraction must use the full final_res to catch paths inside hidden blocks
-    raw_paths = list(dict.fromkeys(
-        re.findall(tag_pattern, final_res, re.IGNORECASE) +
-        re.findall(abs_pattern, final_res, re.IGNORECASE) +
-        re.findall(bare_pattern, final_res, re.IGNORECASE)
-    ))
-    all_paths = [r for p in raw_paths if (r := _resolve_path(p))]
+    extracted_tags = re.findall(tag_pattern, final_res, re.IGNORECASE)
+    extracted_abs = re.findall(abs_pattern, final_res)
+    
+    raw_paths = list(dict.fromkeys(extracted_tags + extracted_abs))
+    all_paths = []
+    for p in raw_paths:
+        resolved = _resolve_path(p)
+        if resolved:
+            all_paths.append(resolved)
+        else:
+            logger.warning(f"File path detected but not resolvable: {p}")
 
     # 3. Replacement (only on the PROTECTED text)
     attachment_hint = "（詳見附件）"
-    def _sub_func(match):
-        path = match.group(1) if match.groups() else match.group(0)
-        return attachment_hint if _resolve_path(path) else match.group(0)
+    
+    def _sub_tag(match):
+        p = match.group(1)
+        return attachment_hint if _resolve_path(p) else match.group(0)
+    
+    def _sub_abs(match):
+        p = match.group(0)
+        return attachment_hint if _resolve_path(p) else match.group(0)
 
-    clean_res = re.sub(tag_pattern, _sub_func, protected_res, flags=re.IGNORECASE)
-    clean_res = re.sub(abs_pattern, _sub_func, clean_res, flags=re.IGNORECASE)
-    clean_res = re.sub(bare_pattern, lambda m: attachment_hint if _resolve_path(m.group(1)) else m.group(0), clean_res, flags=re.IGNORECASE)
+    clean_res = re.sub(tag_pattern, _sub_tag, protected_res, flags=re.IGNORECASE)
+    clean_res = re.sub(abs_pattern, _sub_abs, clean_res)
 
     # 4. Restore code blocks
     for i, block in enumerate(code_blocks):
