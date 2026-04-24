@@ -189,11 +189,11 @@ async def handle_reset(msg: Message):
 
     await bot.send_chat_action(msg.chat.id, "typing")
     try:
-        new_sid = await create_new_session(APP_NAME, uid)
-        set_active_session_id(uid, default_sid, new_sid)
-        logger.info(f"Reset: uid={uid} new_sid={new_sid}")
+        await delete_session(APP_NAME, uid, default_sid)
+        await ensure_session(APP_NAME, uid, default_sid)
+        logger.info(f"Reset: uid={uid} sid={default_sid} (deleted and recreated)")
         preferred_lang = os.getenv("COSTAFF_PREFERRED_LANGUAGE", "Traditional Chinese (繁體中文)")
-        res = await run_adk_prompt(APP_NAME, uid, new_sid, prompt=f"(Context ID: {uid}) 你好，對話已重置，請重新問候我並初始化服務，使用 {preferred_lang}。")
+        res = await run_adk_prompt(APP_NAME, uid, default_sid, prompt=f"(Context ID: {uid}) 你好，對話已重置，請重新問候我並初始化服務，使用 {preferred_lang}。")
         await _deliver_response(msg, res)
     except Exception as e:
         logger.error(f"Reset failed for uid={uid}: {e}")

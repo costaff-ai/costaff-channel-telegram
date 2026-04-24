@@ -24,7 +24,7 @@ PRIVAI_KEY = os.getenv("PRIVAI_API_KEY")
 
 # Database/Identity Integration (Optional, used by some bots)
 try:
-    from sqlalchemy import Column, String, DateTime, Boolean, create_engine
+    from sqlalchemy import Column, String, DateTime, Boolean, create_engine, text
     from sqlalchemy.ext.declarative import declarative_base
     from sqlalchemy.orm import sessionmaker
     from datetime import datetime
@@ -36,12 +36,20 @@ try:
         hashed_id = Column(String, index=True, nullable=False)
         real_id = Column(String, nullable=False)
         is_approved = Column(Boolean, default=False, nullable=False)
+        active_session_id = Column(String, nullable=True)
         created_at = Column(DateTime, default=datetime.utcnow)
         updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     db_uri = os.getenv("ADK_SESSION_SERVICE_URI", "sqlite:///./costaff_agent.db")
     engine = create_engine(db_uri.replace("postgresql+asyncpg://", "postgresql://"))
     Base.metadata.create_all(engine)
+    # Migration: add active_session_id column to existing tables that predate it
+    with engine.connect() as _conn:
+        try:
+            _conn.execute(text("ALTER TABLE identity_maps ADD COLUMN active_session_id VARCHAR"))
+            _conn.commit()
+        except Exception:
+            pass  # column already exists
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     models = type('obj', (object,), {'IdentityMap': IdentityMap})
 except ImportError:
