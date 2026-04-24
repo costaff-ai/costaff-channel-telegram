@@ -62,7 +62,7 @@ async def safe_reply(msg: Message, text: str):
         except Exception as e2:
             logger.error(f"Plain text reply also failed: {e2}")
 
-DATA_ROOT = "/app/data"
+DATA_ROOT = os.environ.get("SHARED_DIR", "/app/data/shared")
 
 def _resolve_path(raw: str, wait_seconds: float = 0) -> str | None:
     """Resolve a file path (absolute or relative) to an existing absolute path.
@@ -192,7 +192,7 @@ async def handle_msg(msg: Message):
         await msg.answer("⏳ 訊息太頻繁，請稍後再試。")
         return
 
-    UPLOADS_DIR = "/app/data/agent-coding/shared/uploads"
+    UPLOADS_DIR = os.path.join(DATA_ROOT, "uploads")
     os.makedirs(UPLOADS_DIR, exist_ok=True)
     uploaded_file_paths: list[str] = []
 
@@ -223,8 +223,7 @@ async def handle_msg(msg: Message):
         await upload_to_costaff(buf, fname, uid, sid=sid, app_name=APP_NAME)
 
     if uploaded_file_paths:
-        rel_paths = [os.path.relpath(p, "/app/data/agent-coding") for p in uploaded_file_paths]
-        paths_note = (f"（使用者上傳了檔案，存放在：{', '.join(uploaded_file_paths)}。可用相對路徑存取：{', '.join(rel_paths)}）")
+        paths_note = (f"（使用者上傳了檔案，已存放在 SHARED_DIR/uploads/：{', '.join(uploaded_file_paths)}）")
         if parts and "text" in parts[0]: parts[0]["text"] += " " + paths_note
         else: parts.append({"text": paths_note})
 

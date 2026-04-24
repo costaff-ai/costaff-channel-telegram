@@ -9,16 +9,12 @@ services:
       - ADK_APP_NAME=costaff_agent
       - COSTAFF_PREFERRED_LANGUAGE=${COSTAFF_PREFERRED_LANGUAGE}
       - ADK_SESSION_SERVICE_URI=${ADK_SESSION_SERVICE_URI}
-    volumes:
-      - costaff_data:/app/data
+      # Plan B: channel reads/writes from shared workspace
+      - SHARED_DIR=/app/data/shared
+    # Note: actual bind mounts are injected by the CoStaff CLI in compose-fragment.yaml
     networks:
       - costaff_default
 
 networks:
   costaff_default:
     external: true
-
-volumes:
-  costaff_data:
-    external: true
-    name: costaff_data
