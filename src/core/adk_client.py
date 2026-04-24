@@ -235,7 +235,7 @@ async def run_adk_prompt(app: str, uid: str, sid: str, prompt: Optional[str] = N
             payload = {"appName": app, "userId": uid, "sessionId": sid, "newMessage": {"role": "user", "parts": msg_parts}}
             headers = {"X-Correlation-ID": cid}
             client = _get_http_client()
-            for _ in range(3):
+            for attempt in range(3):
                 try:
                     res = await client.post(f"{ADK_URL}/run", json=payload, headers=headers)
                     if res.status_code == 200:
@@ -256,10 +256,16 @@ async def run_adk_prompt(app: str, uid: str, sid: str, prompt: Optional[str] = N
                         preferred_lang = os.getenv("COSTAFF_PREFERRED_LANGUAGE", "Traditional Chinese (繁體中文)")
                         payload["newMessage"] = {"role": "user", "parts": [{"text": f"任務已完成，請用{preferred_lang}向用戶說明結果摘要。"}]}
                         continue
+                    else:
+                        # 4xx/5xx — log body, backoff, then retry with SAME payload
+                        body_preview = res.text[:500] if res.text else ""
+                        logger.warning(f"ADK /run returned status={res.status_code} cid={cid} sid={sid} attempt={attempt} body={body_preview}")
+                        await asyncio.sleep(2)
+                        continue
                 except Exception as e:
-                    logger.warning(f"ADK request attempt failed cid={cid} sid={sid}: {e}")
+                    logger.warning(f"ADK request attempt failed cid={cid} sid={sid} attempt={attempt}: {e}")
                     await asyncio.sleep(2)
             logger.warning(f"ADK request exhausted retries cid={cid} sid={sid}")
-            return "⚠️ 無法取得 Agent 回應。"
+            return "⚠️ 系統忙碌中，您的請求未能完成，請稍後再試（或使用 /reset 開新對話）。"
     finally:
         await _release_session_lock(sid)
