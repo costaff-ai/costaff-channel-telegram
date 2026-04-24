@@ -75,10 +75,7 @@ def _resolve_path(raw: str, wait_seconds: float = 0) -> str | None:
     candidates = []
     if os.path.isabs(raw):
         candidates.append(raw)
-        # If path looks like /app/data/agent-ba/xxx, add fuzzy match for agent-business-analysis
-        if "agent-ba/" in raw:
-            candidates.append(raw.replace("agent-ba/", "agent-business-analysis/"))
-    
+
     # Always check common relative locations
     candidates.append(os.path.join(DATA_ROOT, raw))
     
