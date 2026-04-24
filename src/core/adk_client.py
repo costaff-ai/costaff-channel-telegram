@@ -174,6 +174,45 @@ async def ensure_session(app: str, uid: str, sid: str) -> bool:
         logger.warning(f"Failed to ensure session {sid}: {e}")
         return False
 
+async def create_new_session(app: str, uid: str) -> str:
+    """Create a brand-new ADK session (auto-generated ID). Returns the new session ID."""
+    url = f"{ADK_URL}/apps/{app}/users/{uid}/sessions"
+    client = _get_http_client()
+    res = await client.post(url, json={})
+    res.raise_for_status()
+    return res.json()["id"]
+
+def get_active_session_id(uid: str, default_sid: str) -> str:
+    """Return the active session ID for this user, falling back to default_sid."""
+    if not SessionLocal:
+        return default_sid
+    db = SessionLocal()
+    try:
+        m = db.query(models.IdentityMap).filter(models.IdentityMap.hashed_id == uid).first()
+        if m and m.active_session_id:
+            return m.active_session_id
+        return default_sid
+    except Exception:
+        return default_sid
+    finally:
+        db.close()
+
+def set_active_session_id(uid: str, default_sid: str, new_session_id: str) -> None:
+    """Persist the active session ID for this user."""
+    if not SessionLocal:
+        return
+    db = SessionLocal()
+    try:
+        m = db.query(models.IdentityMap).filter(models.IdentityMap.session_id == default_sid).first()
+        if m:
+            m.active_session_id = new_session_id
+            db.commit()
+    except Exception as e:
+        logger.error(f"set_active_session_id: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 async def delete_session(app: str, uid: str, sid: str) -> bool:
     url = f"{ADK_URL}/apps/{app}/users/{uid}/sessions/{sid}"
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:

@@ -13,6 +13,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, FSInputFile, BotCommand
 
 from src.core.adk_client import run_adk_prompt, delete_session, upload_to_costaff, sync_identity, check_approved, get_user_id, setup_logging
+from src.core.adk_client import create_new_session, get_active_session_id, set_active_session_id
 from src.core.adk_client import SessionLocal, models
 
 setup_logging(os.getenv("LOG_LEVEL", "INFO"))
@@ -174,6 +175,30 @@ async def _run_agent_task(msg: Message, uid: str, sid: str, parts: list):
         logger.error(f"Agent task failed for session {sid}: {e}")
         await safe_reply(msg, "很抱歉，處理您的請求時發生錯誤，請稍後再試。")
 
+@dp.message(Command("reset"))
+async def handle_reset(msg: Message):
+    if msg.message_id in _processed_message_ids: return
+    _processed_message_ids.add(msg.message_id)
+
+    uid = get_user_id(msg.chat.id)
+    default_sid = f"tg_{uid}"
+    sync_identity(uid, str(msg.chat.id), default_sid)
+    if not check_approved(default_sid):
+        await msg.answer(PENDING_MSG)
+        return
+
+    await bot.send_chat_action(msg.chat.id, "typing")
+    try:
+        new_sid = await create_new_session(APP_NAME, uid)
+        set_active_session_id(uid, default_sid, new_sid)
+        logger.info(f"Reset: uid={uid} new_sid={new_sid}")
+        preferred_lang = os.getenv("COSTAFF_PREFERRED_LANGUAGE", "Traditional Chinese (繁體中文)")
+        res = await run_adk_prompt(APP_NAME, uid, new_sid, prompt=f"(Context ID: {uid}) 你好，對話已重置，請重新問候我並初始化服務，使用 {preferred_lang}。")
+        await _deliver_response(msg, res)
+    except Exception as e:
+        logger.error(f"Reset failed for uid={uid}: {e}")
+        await safe_reply(msg, "重置失敗，請稍後再試。")
+
 @dp.message()
 async def handle_msg(msg: Message):
     if msg.message_id in _processed_message_ids: return
@@ -183,9 +208,10 @@ async def handle_msg(msg: Message):
     text = msg.text or msg.caption or ""
     parts = [{"text": text}] if text else []
     uid = get_user_id(msg.chat.id)
-    sid = f"tg_{uid}"
-    sync_identity(uid, str(msg.chat.id), sid)
-    if not check_approved(sid):
+    default_sid = f"tg_{uid}"
+    sid = get_active_session_id(uid, default_sid)
+    sync_identity(uid, str(msg.chat.id), default_sid)
+    if not check_approved(default_sid):
         await msg.answer(PENDING_MSG)
         return
     if _is_rate_limited(uid):
