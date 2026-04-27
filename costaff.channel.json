@@ -12,5 +12,5 @@
     "ADK_APP_NAME",
     "COSTAFF_PREFERRED_LANGUAGE"
   ],
-  "health_path": "/.well-known/agent.json"
+  "health_path": "/.well-known/agent-card.json"
 }

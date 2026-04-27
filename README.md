@@ -47,7 +47,7 @@ costaff-channel-telegram  ──►  CoStaff Agent (A2A / ADK API)
 - **Identity approval workflow** — new users are held pending until an operator approves them from the CoStaff dashboard
 - **Session management** — `/reset` clears the conversation and starts fresh
 - **Rate limiting** — configurable per-user message rate cap to prevent abuse
-- **Health endpoint** — exposes `GET /.well-known/agent.json` on port 8080 for CoStaff platform registration
+- **Health endpoint** — exposes `GET /.well-known/agent-card.json` on port 8080 for CoStaff platform registration
 
 ---
 

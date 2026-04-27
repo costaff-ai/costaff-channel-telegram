@@ -47,7 +47,7 @@ costaff-channel-telegram  ──►  CoStaff Agent (A2A / ADK API)
 - **身份審核流程** — 新使用者須等待管理員從 CoStaff 後台審核後方可使用
 - **會話管理** — `/reset` 可清除對話並重新開始
 - **訊息頻率限制** — 可設定每位使用者的訊息頻率上限，防止濫用
-- **健康端點** — 於 8080 port 提供 `GET /.well-known/agent.json`，供 CoStaff 平台註冊使用
+- **健康端點** — 於 8080 port 提供 `GET /.well-known/agent-card.json`，供 CoStaff 平台註冊使用
 
 ---
 

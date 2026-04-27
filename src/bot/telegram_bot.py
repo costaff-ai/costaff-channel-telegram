@@ -285,7 +285,7 @@ async def main():
     from aiohttp import web
     async def health_check(request): return web.json_response({"status": "healthy"})
     app = web.Application()
-    app.router.add_get('/.well-known/agent.json', health_check)
+    app.router.add_get('/.well-known/agent-card.json', health_check)
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, '0.0.0.0', 8080).start()
