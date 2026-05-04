@@ -12,7 +12,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message, FSInputFile, BotCommand
 
-from src.core.adk_client import run_adk_prompt, delete_session, upload_to_costaff, sync_identity, check_approved, get_user_id, setup_logging
+from src.core.adk_client import run_adk_prompt, delete_session, sync_identity, check_approved, get_user_id, setup_logging
 from src.core.adk_client import create_new_session, get_active_session_id, set_active_session_id
 from src.core.adk_client import SessionLocal, models
 
@@ -234,7 +234,6 @@ async def handle_msg(msg: Message):
         buf.seek(0)
         with open(fpath, "wb") as f: f.write(buf.read())
         uploaded_file_paths.append(fpath)
-        await upload_to_costaff(buf, fname, uid, sid=sid, app_name=APP_NAME)
 
     if msg.document:
         doc = msg.document
@@ -246,7 +245,6 @@ async def handle_msg(msg: Message):
         buf.seek(0)
         with open(fpath, "wb") as f: f.write(buf.read())
         uploaded_file_paths.append(fpath)
-        await upload_to_costaff(buf, fname, uid, sid=sid, app_name=APP_NAME)
 
     if uploaded_file_paths:
         paths_note = (f"（使用者上傳了檔案，已存放在 SHARED_DIR/uploads/：{', '.join(uploaded_file_paths)}）")
