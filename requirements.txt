@@ -13,6 +13,7 @@ pytz
 aiogram
 discord.py
 line-bot-sdk
+costaff-channel-chatbot @ git+https://github.com/costaff-ai/costaff-channel-chatbot.git@main
 python-docx
 fpdf2
 python-multipart
