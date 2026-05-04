@@ -13,7 +13,8 @@ pytz
 aiogram
 discord.py
 line-bot-sdk
-costaff-channel-chatbot @ git+https://github.com/costaff-ai/costaff-channel-chatbot.git@main
+# costaff-channel-chatbot is installed separately in the Dockerfile while the
+# SDK repo is private (needs GITHUB_TOKEN). Restore here when SDK goes public.
 python-docx
 fpdf2
 python-multipart

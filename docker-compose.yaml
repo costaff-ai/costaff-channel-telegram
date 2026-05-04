@@ -1,6 +1,9 @@
 services:
   telegram:
-    build: .
+    build:
+      context: .
+      args:
+        GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     container_name: costaff-channel-telegram
     restart: always
     environment:
