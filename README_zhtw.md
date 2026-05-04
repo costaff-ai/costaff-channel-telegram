@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![Docker Support](https://img.shields.io/badge/docker-supported-blue.svg)](https://www.docker.com/)
 [![aiogram](https://img.shields.io/badge/aiogram-3.x-blue.svg)](https://docs.aiogram.dev/)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 **[English](./README.md)** | 繁體中文
 
@@ -125,4 +125,4 @@ Bot 以單一 Docker 容器運行，加入 `costaff_default` 網路，並掛載 
 
 ## 授權
 
-依 AGPL v3 授權條款發布。詳見 `LICENSE`。
+依 Apache 2.0 授權條款發布。詳見 `LICENSE`。
