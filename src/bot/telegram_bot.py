@@ -7,7 +7,7 @@ from typing import Any
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
-from aiogram.types import BotCommand, FSInputFile, Message
+from aiogram.types import BotCommand, FSInputFile, Message, ReplyParameters
 from costaff_channel_chatbot import (
     ChannelAdapter,
     ChannelRuntime,
@@ -32,14 +32,29 @@ class TelegramAdapter(ChannelAdapter):
     platform_prefix = "tg"
     max_message_length = 4096
 
+    def _reply_params(self, msg: IncomingMessage) -> ReplyParameters | None:
+        """Build a ReplyParameters object so the outgoing message quotes the
+        user's inbound message. allow_sending_without_reply=True means the
+        send still succeeds (without quoting) if the target was deleted."""
+        if not msg.message_id:
+            return None
+        try:
+            return ReplyParameters(
+                message_id=int(msg.message_id),
+                allow_sending_without_reply=True,
+            )
+        except (TypeError, ValueError):
+            return None
+
     async def reply(self, msg: IncomingMessage, text: str) -> None:
         chat_id = int(msg.real_id)
+        reply_params = self._reply_params(msg)
         try:
-            await bot.send_message(chat_id, text, parse_mode="HTML")
+            await bot.send_message(chat_id, text, parse_mode="HTML", reply_parameters=reply_params)
         except Exception as e:
             logger.error(f"reply HTML failed, falling back to plain: {e}")
             try:
-                await bot.send_message(chat_id, text)
+                await bot.send_message(chat_id, text, reply_parameters=reply_params)
             except Exception as e2:
                 logger.error(f"plain reply also failed: {e2}")
 
@@ -49,11 +64,12 @@ class TelegramAdapter(ChannelAdapter):
         name = os.path.basename(path)
         ext = os.path.splitext(name)[1].lower()
         chat_id = int(msg.real_id)
+        reply_params = self._reply_params(msg)
         try:
             if ext in _IMAGE_EXTS:
-                await bot.send_photo(chat_id, FSInputFile(path), caption=name)
+                await bot.send_photo(chat_id, FSInputFile(path), caption=name, reply_parameters=reply_params)
             else:
-                await bot.send_document(chat_id, FSInputFile(path), caption=name)
+                await bot.send_document(chat_id, FSInputFile(path), caption=name, reply_parameters=reply_params)
             logger.info(f"Delivered file: {path}")
         except Exception as e:
             logger.error(f"Failed to deliver {path}: {e}")
