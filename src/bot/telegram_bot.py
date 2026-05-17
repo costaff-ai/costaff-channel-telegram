@@ -93,21 +93,6 @@ adapter = TelegramAdapter()
 runtime = ChannelRuntime(adapter)
 
 
-def _dbg(msg: Message, where: str) -> None:
-    """TEMP photo-pipeline instrumentation (grep [PHOTO-DBG]; remove later)."""
-    try:
-        logger.info(
-            "[PHOTO-DBG] %s ct=%s photo=%s(%d) doc=%s mgid=%s "
-            "text=%r caption=%r",
-            where, msg.content_type,
-            bool(msg.photo), len(msg.photo or []),
-            bool(msg.document), msg.media_group_id,
-            (msg.text or "")[:40], (msg.caption or "")[:40],
-        )
-    except Exception as e:  # never let logging break the flow
-        logger.info("[PHOTO-DBG] %s log-error %s", where, e)
-
-
 def _attachments_of(msg: Message) -> list[Any]:
     atts: list[Any] = []
     if msg.photo:
@@ -168,18 +153,11 @@ async def _flush_media_group(mgid: str) -> None:
         return  # a newer item arrived; a fresh timer will flush
     grp = _media_groups.pop(mgid, None)
     if not grp or not grp["messages"]:
-        logger.info("[PHOTO-DBG] flush mgid=%s but EMPTY/none", mgid)
         return
     msgs = grp["messages"]
-    inc = _to_incoming_group(msgs)
-    logger.info(
-        "[PHOTO-DBG] FLUSH mgid=%s buffered=%d -> IncomingMessage "
-        "attachments=%d text=%r",
-        mgid, len(msgs), len(inc.attachments or []), (inc.text or "")[:50],
-    )
     try:
         await bot.send_chat_action(msgs[0].chat.id, "typing")
-        await runtime.handle_message(inc)
+        await runtime.handle_message(_to_incoming_group(msgs))
     except Exception as e:
         logger.warning(f"media-group {mgid} flush failed: {e}")
 
@@ -192,25 +170,16 @@ async def on_reset(msg: Message) -> None:
 
 @dp.message()
 async def on_message(msg: Message) -> None:
-    _dbg(msg, "on_message")
     if msg.media_group_id:
         mgid = str(msg.media_group_id)
         grp = _media_groups.setdefault(mgid, {"messages": [], "task": None})
         grp["messages"].append(msg)
-        logger.info(
-            "[PHOTO-DBG] buffered mgid=%s now=%d", mgid, len(grp["messages"])
-        )
         if grp["task"]:
             grp["task"].cancel()  # reset debounce: flush after the LAST item
         grp["task"] = asyncio.create_task(_flush_media_group(mgid))
         return
-    inc = _to_incoming(msg)
-    logger.info(
-        "[PHOTO-DBG] single -> IncomingMessage attachments=%d text=%r",
-        len(inc.attachments or []), (inc.text or "")[:50],
-    )
     await bot.send_chat_action(msg.chat.id, "typing")
-    await runtime.handle_message(inc)
+    await runtime.handle_message(_to_incoming(msg))
 
 
 async def main() -> None:
