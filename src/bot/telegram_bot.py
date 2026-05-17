@@ -93,20 +93,73 @@ adapter = TelegramAdapter()
 runtime = ChannelRuntime(adapter)
 
 
-def _to_incoming(msg: Message) -> IncomingMessage:
-    text = msg.text or msg.caption or ""
-    attachments: list[Any] = []
+def _attachments_of(msg: Message) -> list[Any]:
+    atts: list[Any] = []
     if msg.photo:
-        attachments.append(msg.photo[-1])  # largest available size
+        atts.append(msg.photo[-1])  # largest available size
     if msg.document:
-        attachments.append(msg.document)
+        atts.append(msg.document)
+    return atts
+
+
+def _to_incoming(msg: Message) -> IncomingMessage:
     return IncomingMessage(
         real_id=str(msg.chat.id),
-        text=text,
-        attachments=attachments,
+        text=msg.text or msg.caption or "",
+        attachments=_attachments_of(msg),
         raw=msg,
         message_id=str(msg.message_id),
     )
+
+
+def _to_incoming_group(msgs: list[Message]) -> IncomingMessage:
+    """Aggregate an album (messages sharing media_group_id) into ONE message.
+
+    Telegram delivers an album as N separate updates, the caption set on
+    only one of them. Collect every photo/document and the single caption
+    so the agent sees one multimodal Q&A turn instead of N fragments.
+    """
+    first = msgs[0]
+    text = ""
+    for m in msgs:  # caption can be on any item; take the first non-empty
+        if m.caption or m.text:
+            text = m.caption or m.text
+            break
+    attachments: list[Any] = []
+    for m in msgs:
+        attachments.extend(_attachments_of(m))
+    return IncomingMessage(
+        real_id=str(first.chat.id),
+        text=text,
+        attachments=attachments,
+        raw=first,
+        message_id=str(first.message_id),
+    )
+
+
+# --- Album aggregation -------------------------------------------------
+# Telegram splits a multi-photo send into N updates sharing
+# `media_group_id`. Buffer them and flush once, ~1.5s after the LAST
+# item arrives (timer reset on each new item), so the agent gets a
+# single multi-image message. Single (non-album) messages bypass this.
+_MG_DEBOUNCE_SEC = 1.5
+_media_groups: dict[str, dict[str, Any]] = {}
+
+
+async def _flush_media_group(mgid: str) -> None:
+    try:
+        await asyncio.sleep(_MG_DEBOUNCE_SEC)
+    except asyncio.CancelledError:
+        return  # a newer item arrived; a fresh timer will flush
+    grp = _media_groups.pop(mgid, None)
+    if not grp or not grp["messages"]:
+        return
+    msgs = grp["messages"]
+    try:
+        await bot.send_chat_action(msgs[0].chat.id, "typing")
+        await runtime.handle_message(_to_incoming_group(msgs))
+    except Exception as e:
+        logger.warning(f"media-group {mgid} flush failed: {e}")
 
 
 @dp.message(Command("reset"))
@@ -117,6 +170,14 @@ async def on_reset(msg: Message) -> None:
 
 @dp.message()
 async def on_message(msg: Message) -> None:
+    if msg.media_group_id:
+        mgid = str(msg.media_group_id)
+        grp = _media_groups.setdefault(mgid, {"messages": [], "task": None})
+        grp["messages"].append(msg)
+        if grp["task"]:
+            grp["task"].cancel()  # reset debounce: flush after the LAST item
+        grp["task"] = asyncio.create_task(_flush_media_group(mgid))
+        return
     await bot.send_chat_action(msg.chat.id, "typing")
     await runtime.handle_message(_to_incoming(msg))
 
