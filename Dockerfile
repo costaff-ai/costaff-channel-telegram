@@ -9,7 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Set PYTHONPATH to include the /app directory
-ENV PYTHONPATH=/app
+# PYTHONPATH=/app/src so `bot` resolves as a package — mirrors
+# pytest.ini's `pythonpath = src` so tests + container behave the same.
+ENV PYTHONPATH=/app/src
 
-CMD ["python", "src/bot/telegram_bot.py"]
+CMD ["python", "-m", "bot.telegram_bot"]
