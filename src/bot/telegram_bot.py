@@ -15,6 +15,8 @@ from costaff_channel_chatbot import (
     setup_logging,
 )
 
+from bot import __version__
+
 setup_logging(os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
@@ -188,8 +190,12 @@ async def main() -> None:
     async def health_check(request):
         return web.json_response({"status": "healthy"})
 
+    async def version_endpoint(request):
+        return web.json_response({"version": __version__})
+
     app = web.Application()
     app.router.add_get("/.well-known/agent-card.json", health_check)
+    app.router.add_get("/version", version_endpoint)
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", 8080).start()
