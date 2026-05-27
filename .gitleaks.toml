@@ -1,0 +1,86 @@
+# gitleaks config for the CoStaff project.
+#
+# Inherits the upstream default ruleset (AWS / GCP / Azure / GitHub /
+# OpenAI / Slack / 100+ vendors), then layers on CoStaff-specific rules
+# for the leak patterns we've actually been bitten by.
+#
+# Run locally:
+#     gitleaks detect --config .gitleaks.toml
+#     gitleaks protect --staged --config .gitleaks.toml   # what pre-commit runs
+#
+# Wired in via `.pre-commit-config.yaml` — see CONTRIBUTING.md §Pre-commit.
+
+[extend]
+useDefault = true
+
+# ----------------------------- CUSTOM RULES ----------------------------
+
+[[rules]]
+id = "costaff-mcp-secret-key"
+description = "MCP_SECRET_KEY hardcoded as os.getenv() fallback — should be ENV-only"
+regex = '''(?i)(MCP_SECRET_KEY|mcp_token|mcp[_-]?bearer)["']?\s*[,=:]\s*["'][0-9a-f]{32,}["']'''
+tags = ["costaff", "mcp", "token"]
+
+[[rules]]
+id = "costaff-google-express-key"
+description = "Google AI Studio / Stitch Express-mode API key (AQ. prefix)"
+regex = '''AQ\.[A-Za-z0-9_-]{40,}'''
+tags = ["costaff", "google", "api-key"]
+
+[[rules]]
+id = "costaff-generic-hex-token-in-code"
+description = "64-char hex string in Python code — likely a secrets.token_hex(32)"
+# Catches `"f2784ab6...d8d111a"` literals when not in a test/fixture path.
+regex = '''["'][0-9a-f]{64}["']'''
+path = '''\.(py|yaml|yml|json|toml|env|sh)$'''
+tags = ["costaff", "entropy"]
+[[rules.allowlists]]
+# Test fixtures + integrity hashes + git sha references shouldn't trip this.
+paths = [
+  '''(^|/)tests?/''',
+  '''conftest\.py$''',
+  '''package-lock\.json$''',
+  '''yarn\.lock$''',
+  '''_lock\.json$''',
+]
+
+[[rules]]
+id = "costaff-backup-config-json"
+description = "Accidental commit of a .costaff_backup snapshot (real DB + .env + auth.json)"
+# This is path-based — any file under .costaff_backup/ is a leak by definition.
+regex = '''.''' # match anything inside the qualifying paths
+path = '''\.costaff_backup/'''
+tags = ["costaff", "backup"]
+
+# ----------------------------- ALLOWLISTS ------------------------------
+# Things that LOOK like secrets but are intentional placeholders.
+
+[[allowlists]]
+description = "Documentation placeholders + .env.example"
+paths = [
+  '''(^|/)\.env\.(example|template)$''',
+  '''(^|/)config\.json\.example$''',
+  '''(^|/)README(_zhtw)?\.md$''',
+  '''(^|/)CHANGELOG\.md$''',
+  '''(^|/)docs/''',
+]
+regexes = [
+  '''(?i)REPLACE_WITH_[A-Z_]+''',
+  '''(?i)YOUR_[A-Z_]+_HERE''',
+  '''(?i)xxx{4,}''',
+  '''(?i)<your[_-][a-z-]+>''',
+  '''(?i)change[-_]me[-_]to[-_][a-z-]+''',
+  '''ghp_xxx{20,}''',
+  '''AIza[A-Z_x]{30,}''',
+  '''any-12char-pw''',
+  '''ghp_[a-zA-Z0-9_]{36}EXAMPLE''',
+]
+
+[[allowlists]]
+description = "Public key material is, by definition, public"
+regexes = [
+  # Ed25519 license public key in core/license.py
+  '''_PUBLIC_KEY_B64\s*=''',
+  # Anything in a *.pub or comment-marked PUBLIC KEY section
+  '''-----BEGIN PUBLIC KEY-----''',
+]
