@@ -172,3 +172,32 @@ def test_adapter_max_message_length_matches_telegram_limit():
     """Telegram's hard cap on text messages is 4096 chars."""
     adapter = TelegramAdapter()
     assert adapter.max_message_length == 4096
+
+
+# ----------------------------------------------------- format_text / push
+
+def test_format_text_converts_markdown_to_telegram_html():
+    adapter = TelegramAdapter()
+    out = adapter.format_text("## Title\n**bold** `x < y`")
+    assert "<b>Title</b>" in out
+    assert "<b>bold</b>" in out
+    assert "<code>x &lt; y</code>" in out
+
+
+@pytest.mark.asyncio
+async def test_push_falls_back_to_plain_when_html_fails(monkeypatch):
+    """An HTML parse failure must not drop the push — it retries plain."""
+    import bot.telegram_bot as tb
+
+    calls: list[dict] = []
+
+    async def fake_send_message(chat_id, text, **kwargs):
+        calls.append(kwargs)
+        if kwargs.get("parse_mode") == "HTML":
+            raise RuntimeError("can't parse entities")
+
+    monkeypatch.setattr(tb.bot, "send_message", fake_send_message)
+    await TelegramAdapter().push("100", "broken <tag")
+    assert len(calls) == 2
+    assert calls[0].get("parse_mode") == "HTML"
+    assert "parse_mode" not in calls[1]

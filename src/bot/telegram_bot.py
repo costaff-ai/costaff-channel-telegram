@@ -12,6 +12,7 @@ from costaff_channel_chatbot import (
     ChannelAdapter,
     ChannelRuntime,
     IncomingMessage,
+    md_to_telegram_html,
     setup_logging,
 )
 
@@ -33,6 +34,10 @@ _IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 class TelegramAdapter(ChannelAdapter):
     platform_prefix = "tg"
     max_message_length = 4096
+
+    def format_text(self, text: str) -> str:
+        # Replies go out with parse_mode=HTML; agent output is Markdown.
+        return md_to_telegram_html(text)
 
     def _reply_params(self, msg: IncomingMessage) -> ReplyParameters | None:
         """Build a ReplyParameters object so the outgoing message quotes the
@@ -88,7 +93,11 @@ class TelegramAdapter(ChannelAdapter):
         try:
             await bot.send_message(int(real_id), text, parse_mode="HTML")
         except Exception as e:
-            logger.warning(f"push to {real_id} failed: {e}")
+            logger.warning(f"push HTML to {real_id} failed, falling back to plain: {e}")
+            try:
+                await bot.send_message(int(real_id), text)
+            except Exception as e2:
+                logger.warning(f"plain push to {real_id} also failed: {e2}")
 
 
 adapter = TelegramAdapter()
