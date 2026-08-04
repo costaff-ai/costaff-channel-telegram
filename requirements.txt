@@ -4,4 +4,4 @@ python-dotenv>=1.0
 # SDK rewrites postgresql+asyncpg:// URL to sync postgresql:// at boot,
 # so the sync driver is what's actually needed in production.
 psycopg2-binary>=2.9
-costaff-channel-chatbot @ git+https://github.com/costaff-ai/costaff-channel-chatbot.git@v0.1.0-beta-3
+costaff-channel-chatbot @ git+https://github.com/costaff-ai/costaff-channel-chatbot.git@v0.1.0
